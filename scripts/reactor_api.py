@@ -28,7 +28,9 @@ import gradio as gr
 from scripts.reactor_swapper import EnhancementOptions, blend_faces, swap_face, DetectionOptions
 from scripts.reactor_logger import logger
 from scripts.reactor_helpers import get_facemodels
+from scripts.reactor_gpen_model import setup_gpen_face_restorer
 
+setup_gpen_face_restorer()
 
 # @asynccontextmanager
 # async def lifespan(app: FastAPI):
@@ -111,7 +113,7 @@ def reactor_api(_: gr.Blocks, app: FastAPI):
         upscaler: str = Body("None",title="Upscaler"),
         scale: float = Body(1,title="Scale by"),
         upscale_visibility: float = Body(1,title="Upscaler visibility (if scale = 1)"),
-        face_restorer: str = Body("None",title="Restore Face: 0 - None; 1 - CodeFormer; 2 - GFPGA"),
+        face_restorer: str = Body("None",title="Restore Face: 0 - None; 1 - CodeFormer; 2 - GFPGAN; 3 - GPEN-BFR-512"),
         restorer_visibility: float = Body(1,title="Restore visibility value"),
         codeformer_weight: float = Body(0.5,title="CodeFormer Weight"),
         restore_first: int = Body(1,title="Restore face -> Then upscale, 1 - True, 0 - False"),

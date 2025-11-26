@@ -38,6 +38,9 @@ from scripts.reactor_helpers import (
     get_SDNEXT,
 )
 from scripts.reactor_globals import SWAPPER_MODELS_PATH #, DEVICE, DEVICE_LIST
+from scripts.reactor_gpen_model import setup_gpen_face_restorer
+
+setup_gpen_face_restorer()
 
 def IA_cap(cond: bool, label: str=""):
     return None

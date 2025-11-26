@@ -168,22 +168,31 @@ def restore_face(image: Image, enhancement_options: EnhancementOptions):
     if check_process_halt(msgforced=True):
         return result_image
     
-    if enhancement_options.face_restorer is not None:
+    face_restorer = enhancement_options.face_restorer
+    if face_restorer is not None:
         original_image = result_image.copy()
         numpy_image = np.array(result_image)
-        if enhancement_options.face_restorer.name() == "CodeFormer":
-            logger.status("Restoring the face with %s (weight: %s)", enhancement_options.face_restorer.name(), enhancement_options.codeformer_weight)
-            numpy_image = codeformer_model.codeformer.restore(
-                numpy_image, w=enhancement_options.codeformer_weight
+        restorer_name = face_restorer.name()
+        try:
+            if restorer_name == "CodeFormer":
+                logger.status("Restoring the face with %s (weight: %s)", restorer_name, enhancement_options.codeformer_weight)
+                numpy_image = face_restorer.restore(
+                    numpy_image, w=enhancement_options.codeformer_weight
+                )
+            else:
+                logger.status("Restoring the face with %s", restorer_name)
+                numpy_image = face_restorer.restore(numpy_image)
+        except Exception as e:
+            logger.error("Face restoration failed with %s: %s", restorer_name, e)
+            numpy_image = np.array(original_image)
+
+        try:
+            restored_image = Image.fromarray(numpy_image)
+            result_image = Image.blend(
+                original_image, restored_image, enhancement_options.restorer_visibility
             )
-        else: # GFPGAN:
-            logger.status("Restoring the face with %s", enhancement_options.face_restorer.name())
-            numpy_image = gfpgan_model.gfpgan_fix_faces(numpy_image)
-            # numpy_image = enhancement_options.face_restorer.restore(numpy_image)
-        restored_image = Image.fromarray(numpy_image)
-        result_image = Image.blend(
-            original_image, restored_image, enhancement_options.restorer_visibility
-        )
+        except Exception as e:
+            logger.error("Cannot blend restored face: %s", e)
     
     return result_image
 
