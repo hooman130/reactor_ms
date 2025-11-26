@@ -79,7 +79,7 @@ def show(is_img2img: bool, show_br: bool = True, **msgs):
                     # save_original: gr.Checkbox.update(value=SAVE_ORIGINAL,visible=show_br),
                     imgs_hash_clear: gr.Button(visible=False)
                 }
-        
+
     progressbar_area = gr.Markdown("")
     with gr.Tab("Main"):
         with gr.Column():
@@ -201,8 +201,16 @@ def show(is_img2img: bool, show_br: bool = True, **msgs):
             with gr.Row():
                 face_restorer_name = gr.Radio(
                     label="Restore Face",
-                    choices=["None"] + [x.name() for x in shared.face_restorers],
-                    value=shared.face_restorers[0].name(),
+                    choices=(
+                        ["None"]
+                        + [x.name() for x in shared.face_restorers]
+                        + ["GPEN_BFR_512"]
+                    ),
+                    value=(
+                        shared.face_restorers[0].name()
+                        if len(shared.face_restorers) > 0
+                        else "None"
+                    ),
                     type="value",
                 )
                 with gr.Column():

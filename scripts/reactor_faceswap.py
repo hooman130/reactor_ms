@@ -69,7 +69,7 @@ class FaceSwapScript(scripts.Script):
             # SD.Next or A1111 1.52:
             if get_SDNEXT() or check_old_webui():
                 enable = gr.Checkbox(False, label="Enable")
-            
+
             # enable = gr.Checkbox(False, label="Enable", info=f"The Fast and Simple FaceSwap Extension - {version_flag}")
             gr.Markdown(f"<sup>The Fast and Simple FaceSwap Extension - {version_flag}</sup>")
 
@@ -78,19 +78,19 @@ class FaceSwapScript(scripts.Script):
                 "extra_multiple_source": "",
             }
             img, imgs, selected_tab, select_source, face_model, source_folder, save_original, mask_face, source_faces_index, gender_source, faces_index, gender_target, face_restorer_name, face_restorer_visibility, codeformer_weight, swap_in_source, swap_in_generated, random_image = ui_main.show(is_img2img=is_img2img, **msgs)
-            
+
             # TAB DETECTION
             det_thresh, det_maxnum = ui_detection.show()
-            
+
             # TAB UPSCALE
             restore_first, upscaler_name, upscaler_scale, upscaler_visibility, upscale_force = ui_upscale.show()
 
             # TAB TOOLS
             ui_tools.show()
-            
+
             # TAB SETTINGS
             model, device, console_logging_level, source_hash_check, target_hash_check = ui_settings.show()
-            
+
             gr.Markdown("<span style='display:block;text-align:right;padding:3px;font-size:0.666em;margin-bottom:-12px;'>by <a style='font-weight:normal' href='https://github.com/Gourieff' target='_blank'>Eugene Gourieff</a></span>")
 
         return [
@@ -127,7 +127,6 @@ class FaceSwapScript(scripts.Script):
             selected_tab,
         ]
 
-
     @property
     def upscaler(self) -> UpscalerData:
         for upscaler in shared.sd_upscalers:
@@ -137,6 +136,12 @@ class FaceSwapScript(scripts.Script):
 
     @property
     def face_restorer(self) -> FaceRestoration:
+        # If we created a custom restorer (GPEN) use it
+        if (
+            hasattr(self, "custom_face_restorer")
+            and self.custom_face_restorer is not None
+        ):
+            return self.custom_face_restorer
         for face_restorer in shared.face_restorers:
             if face_restorer.name() == self.face_restorer_name:
                 return face_restorer
@@ -154,7 +159,7 @@ class FaceSwapScript(scripts.Script):
             codeformer_weight=self.codeformer_weight,
             upscale_force=self.upscale_force
         )
-    
+
     @property
     def detection_options(self) -> DetectionOptions:
         return DetectionOptions(
@@ -205,13 +210,14 @@ class FaceSwapScript(scripts.Script):
             reset_messaged()
             if check_process_halt():
                 return
-            
+
             global SWAPPER_MODELS_PATH
             if selected_tab == "tab_single":
                 self.source = img
             else:
                 self.source = None
             self.face_restorer_name = face_restorer_name
+            self.custom_face_restorer = None
             self.upscaler_scale = upscaler_scale
             self.upscaler_visibility = upscaler_visibility
             self.face_restorer_visibility = face_restorer_visibility
@@ -266,7 +272,7 @@ class FaceSwapScript(scripts.Script):
                 self.random_image = False
             if self.upscale_force is None:
                 self.upscale_force = False
-            
+
             if shared.state.job_count > 0:
                 # logger.debug(f"Job count: {shared.state.job_count}")
                 self.face_restorer_visibility = shared.opts.data['restorer_visibility'] if 'restorer_visibility' in shared.opts.data.keys() else face_restorer_visibility
@@ -277,13 +283,30 @@ class FaceSwapScript(scripts.Script):
             logger.debug("*** Set Device")
             set_Device(self.device)
 
+            # Instantiate GPEN if selected
+            if self.face_restorer_name == "GPEN_BFR_512":
+                try:
+                    from reactor_modules.gpen_bfr import GPENFaceRestoration  # type: ignore
+                    from scripts.reactor_globals import MODELS_PATH
+
+                    gpen_dir = os.path.join(MODELS_PATH, "reactor", "gpen")
+                    os.makedirs(gpen_dir, exist_ok=True)
+                    gpen_model_path = os.path.join(gpen_dir, "GPEN-BFR-512.pth")
+                    self.custom_face_restorer = GPENFaceRestoration(
+                        gpen_model_path, device=self.device
+                    )
+                    self.custom_face_restorer.load()
+                except Exception as e:  # pragma: no cover
+                    logger.error(f"Cannot initialize GPEN face restorer: {e}")
+                    self.custom_face_restorer = None
+
             if (self.save_original is None or not self.save_original) and (self.select_source == 2 or self.source_imgs is not None):
                 p.do_not_save_samples = True
-            
+
             if ((self.source is not None or self.source_imgs is not None) and self.select_source == 0) or ((self.face_model is not None and self.face_model != "None") and self.select_source == 1) or ((self.source_folder is not None and self.source_folder != "") and self.select_source == 2):
                 logger.debug("*** Log patch")
                 apply_logging_patch(console_logging_level)
-                
+
                 if isinstance(p, StableDiffusionProcessingImg2Img) and self.swap_in_source:
 
                     logger.debug("*** Check process")
@@ -321,7 +344,7 @@ class FaceSwapScript(scripts.Script):
 
                         if shared.state.interrupted or shared.state.skipped:
                             return
-            
+
             else:
                 logger.error("Please provide a source face")
                 return
@@ -409,13 +432,13 @@ class FaceSwapScript(scripts.Script):
                                     logger.error("Cannot save a result image - please, check SD WebUI Settings (Saving and Paths)")
                             elif result is None:
                                 logger.error("Cannot create a result image")
-                        
+
                         # if len(output) != 0:
                         #     split_fullfn = os.path.splitext(img_path[0])
                         #     fullfn = split_fullfn[0] + ".txt"
                         #     with open(fullfn, 'w', encoding="utf8") as f:
                         #         f.writelines(output)
-                
+
                 if shared.opts.return_grid and len(result_images) > 2 and postprocess_run:
                     grid = make_grid(result_images)
                     result_images.insert(0, grid)
@@ -423,10 +446,10 @@ class FaceSwapScript(scripts.Script):
                         save_image(grid, p.outpath_grids, "grid", p.all_seeds[0], p.all_prompts[0], shared.opts.grid_format, info=info, short_filename=not shared.opts.grid_extended_filename, p=p, grid=True)
                     except:
                         logger.error("Cannot save a grid - please, check SD WebUI Settings (Saving and Paths)")
-                
+
                 processed.images = result_images
                 # processed.infotexts = result_info
-            
+
             elif self.select_source == 0 and self.source is not None and self.source_imgs is not None:
 
                 logger.debug("*** Check postprocess - after ELIF")
@@ -441,7 +464,6 @@ class FaceSwapScript(scripts.Script):
                 else:
                     logger.error("Cannot create a result image")
 
-    
     def postprocess_batch(self, p, *args, **kwargs):
         if self.enable and not self.save_original:
             logger.debug("*** Check postprocess_batch")
@@ -458,7 +480,7 @@ class FaceSwapScript(scripts.Script):
                 reset_messaged()
             if check_process_halt():
                 return
-            
+
             # if (self.source is not None and self.select_source == 0) or ((self.face_model is not None and self.face_model != "None") and self.select_source == 1):
             logger.status("Working: source face index %s, target face index %s", self.source_faces_index, self.faces_index)
             image: Image.Image = script_pp.image
@@ -506,9 +528,9 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
         with (
             gr.Accordion(f"{app_title}", open=False) if check_old_webui() else InputAccordion(False, label=f"{app_title}") as enable
         ):
-        # with ui_components.InputAccordion(False, label=f"{app_title}") as enable:
-        # with gr.Accordion(f"{app_title}", open=False):
-            
+            # with ui_components.InputAccordion(False, label=f"{app_title}") as enable:
+            # with gr.Accordion(f"{app_title}", open=False):
+
             # SD.Next or A1111 1.52:
             if get_SDNEXT() or check_old_webui():
                 enable = gr.Checkbox(False, label="Enable")
@@ -521,19 +543,19 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
                 "extra_multiple_source": "",
             }
             img, imgs, selected_tab, select_source, face_model, source_folder, save_original, mask_face, source_faces_index, gender_source, faces_index, gender_target, face_restorer_name, face_restorer_visibility, codeformer_weight, swap_in_source, swap_in_generated, random_image = ui_main.show(is_img2img=False, show_br=False, **msgs)
-            
+
             # TAB DETECTION
             det_thresh, det_maxnum = ui_detection.show()
-            
+
             # TAB UPSCALE
             restore_first, upscaler_name, upscaler_scale, upscaler_visibility, upscale_force = ui_upscale.show(show_br=False)
-                        
+
             # TAB TOOLS
             ui_tools.show()
-                        
+
             # TAB SETTINGS
             model, device, console_logging_level, source_hash_check, target_hash_check = ui_settings.show(hash_check_block=False)
-                        
+
             gr.Markdown("<span style='display:block;text-align:right;padding-right:3px;font-size:0.666em;margin: -9px 0'>by <a style='font-weight:normal' href='https://github.com/Gourieff' target='_blank'>Eugene Gourieff</a></span>")
 
         args = {
@@ -575,6 +597,11 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
 
     @property
     def face_restorer(self) -> FaceRestoration:
+        if (
+            hasattr(self, "custom_face_restorer")
+            and self.custom_face_restorer is not None
+        ):
+            return self.custom_face_restorer
         for face_restorer in shared.face_restorers:
             if face_restorer.name() == self.face_restorer_name:
                 return face_restorer
@@ -592,7 +619,7 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
             codeformer_weight=self.codeformer_weight,
             upscale_force=self.upscale_force,
         )
-    
+
     @property
     def detection_options(self) -> DetectionOptions:
         return DetectionOptions(
@@ -612,6 +639,7 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
             else:
                 self.source = None
             self.face_restorer_name = args['face_restorer_name']
+            self.custom_face_restorer = None
             self.upscaler_scale = args['upscaler_scale']
             self.upscaler_visibility = args['upscaler_visibility']
             self.face_restorer_visibility = args['face_restorer_visibility']
@@ -663,8 +691,25 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
 
             set_Device(self.device)
 
+            # Instantiate GPEN if selected
+            if self.face_restorer_name == "GPEN_BFR_512":
+                try:
+                    from reactor_modules.gpen_bfr import GPENFaceRestoration  # type: ignore
+                    from scripts.reactor_globals import MODELS_PATH
+
+                    gpen_dir = os.path.join(MODELS_PATH, "reactor", "gpen")
+                    os.makedirs(gpen_dir, exist_ok=True)
+                    gpen_model_path = os.path.join(gpen_dir, "GPEN-BFR-512.pth")
+                    self.custom_face_restorer = GPENFaceRestoration(
+                        gpen_model_path, device=self.device
+                    )
+                    self.custom_face_restorer.load()
+                except Exception as e:  # pragma: no cover
+                    logger.error(f"Cannot initialize GPEN face restorer (Extras): {e}")
+                    self.custom_face_restorer = None
+
             logger.debug("We're here: process() 1")
-            
+
             if (self.source is not None and self.select_source == 0) or ((self.face_model is not None and self.face_model != "None") and self.select_source == 1) or ((self.source_folder is not None and self.source_folder != "") and self.select_source == 2) or ((self.source_imgs is not None and self.source is None) and self.select_source == 0):
 
                 logger.debug("We're here: process() 2")

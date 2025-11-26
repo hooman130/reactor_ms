@@ -47,6 +47,7 @@
 - Allow spaces for face indexes (e.g.: 0, 1, 2)
 - Sorting of face models list alphabetically
 - [FaceModels Build API](./API.md#facemodel-build-api)
+- Added GPEN_BFR_512 face restorer option (CodeFormer / GFPGAN / GPEN now selectable)
 - Fixes and improvements
 
 <details>
@@ -162,7 +163,7 @@ __Don't forget to enable ReActor and set any source (to prevent "no source" erro
 - **Multiple faces support**
 - **Gender detection**
 - Ability to **save original images** (made before swapping)
-- **Face restoration** of a swapped face
+- __Face restoration__ of a swapped face (CodeFormer, GFPGAN, GPEN BFR 512)
 - **Upscaling** of a resulting image
 - Saving ans loading **Safetensors Face Models**
 - **Facial Mask Correction** to avoid any  pixelation around face contours

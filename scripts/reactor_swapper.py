@@ -26,9 +26,9 @@ from scripts.reactor_helpers import (
 from scripts.console_log_patch import apply_logging_patch
 
 from modules.face_restoration import FaceRestoration
-try: # A1111
+try:  # A1111
     from modules import codeformer_model, gfpgan_model
-except: # SD.Next
+except:  # SD.Next
     from modules.postprocess import codeformer_model, gfpgan_model
     set_SDNEXT()
 from modules.upscaler import UpscalerData
@@ -163,28 +163,44 @@ def getFaceSwapModel(model_path: str):
 
 
 def restore_face(image: Image, enhancement_options: EnhancementOptions):
-    result_image = image
+    """Restore face using selected restorer (CodeFormer, GFPGAN, GPEN).
 
+    Assumes GPEN instance is already constructed & loaded upstream.
+    """
+    result_image = image
     if check_process_halt(msgforced=True):
         return result_image
-    
-    if enhancement_options.face_restorer is not None:
-        original_image = result_image.copy()
-        numpy_image = np.array(result_image)
-        if enhancement_options.face_restorer.name() == "CodeFormer":
-            logger.status("Restoring the face with %s (weight: %s)", enhancement_options.face_restorer.name(), enhancement_options.codeformer_weight)
+    restorer = enhancement_options.face_restorer
+    if restorer is None:
+        return result_image
+    original_image = result_image.copy()
+    numpy_image = np.array(result_image)
+    name = restorer.name()
+    try:
+        if name == "CodeFormer":
+            logger.status(
+                "Restoring the face with %s (weight: %s)",
+                name,
+                enhancement_options.codeformer_weight,
+            )
             numpy_image = codeformer_model.codeformer.restore(
                 numpy_image, w=enhancement_options.codeformer_weight
             )
-        else: # GFPGAN:
-            logger.status("Restoring the face with %s", enhancement_options.face_restorer.name())
+        elif name == "GFPGAN":
+            logger.status("Restoring the face with %s", name)
             numpy_image = gfpgan_model.gfpgan_fix_faces(numpy_image)
-            # numpy_image = enhancement_options.face_restorer.restore(numpy_image)
-        restored_image = Image.fromarray(numpy_image)
-        result_image = Image.blend(
-            original_image, restored_image, enhancement_options.restorer_visibility
-        )
-    
+        elif name == "GPEN_BFR_512":
+            logger.status("Restoring the face with %s", name)
+            numpy_image = restorer.restore(numpy_image)
+        else:
+            logger.status("Unknown Restorer: %s", name)
+    except Exception as e:  # pragma: no cover
+        logger.error(f"Face restoration error ({name}): {e}")
+        numpy_image = np.array(result_image)
+    restored_image = Image.fromarray(numpy_image)
+    result_image = Image.blend(
+        original_image, restored_image, enhancement_options.restorer_visibility
+    )
     return result_image
 
 def upscale_image(image: Image, enhancement_options: EnhancementOptions):
@@ -230,12 +246,12 @@ def enhance_image(image: Image, enhancement_options: EnhancementOptions):
 
 def enhance_image_and_mask(image: Image.Image, enhancement_options: EnhancementOptions,target_img_orig:Image.Image,entire_mask_image:Image.Image)->Image.Image:
     result_image = image
-    
+
     if check_process_halt(msgforced=True):
         return result_image
-    
+
     if enhancement_options.do_restore_first:
-        
+
         result_image = restore_face(result_image, enhancement_options)
         result_image = Image.composite(result_image,target_img_orig,entire_mask_image)
         result_image = upscale_image(result_image, enhancement_options)
@@ -249,7 +265,7 @@ def enhance_image_and_mask(image: Image.Image, enhancement_options: EnhancementO
 
     return result_image
 
-    
+
 def get_gender(face, face_index):
     gender = [
         x.sex

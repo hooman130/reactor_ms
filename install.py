@@ -48,7 +48,7 @@ def is_installed (
     except Exception as e:
         print(f"Error: {e}")
         return False
-    
+
 def download(url, path):
     request = urllib.request.urlopen(url)
     total = int(request.headers.get('Content-Length', 0))
@@ -60,6 +60,38 @@ if not os.path.exists(models_dir):
 
 if not os.path.exists(model_path):
     download(model_url, model_path)
+
+# --- GPEN model & repository setup ---
+gpen_dir = os.path.join(models_path, "reactor", "gpen")
+gpen_model_path = os.path.join(gpen_dir, "GPEN-BFR-512.pth")
+gpen_model_url = "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/GPEN-BFR-512.pth"
+gpen_repo_root = os.path.join(BASE_PATH, "repositories", "gpen")
+
+
+def ensure_gpen():
+    try:
+        if not os.path.exists(gpen_dir):
+            os.makedirs(gpen_dir, exist_ok=True)
+        if not os.path.exists(gpen_model_path):
+            print("Downloading GPEN-BFR-512 model...")
+            download(gpen_model_url, gpen_model_path)
+        if not os.path.exists(gpen_repo_root):
+            print("Cloning GPEN repository...")
+            subprocess.check_call(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "https://github.com/yangxy/GPEN.git",
+                    gpen_repo_root,
+                ]
+            )
+    except Exception as e:
+        print(f"WARNING: GPEN setup incomplete: {e}")
+
+
+ensure_gpen()
 
 # print("ReActor preheating...", end=' ')
 

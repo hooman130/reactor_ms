@@ -62,6 +62,22 @@ def default_file_path():
     return os.path.join(os.path.abspath("outputs/api"), output_file)
 
 def get_face_restorer(name):
+    if name == "None" or name == "":
+        return None
+    if name == "GPEN_BFR_512":
+        try:
+            from reactor_modules.gpen_bfr import GPENFaceRestoration  # type: ignore
+            from scripts.reactor_globals import MODELS_PATH
+
+            gpen_dir = os.path.join(MODELS_PATH, "reactor", "gpen")
+            os.makedirs(gpen_dir, exist_ok=True)
+            gpen_model_path = os.path.join(gpen_dir, "GPEN-BFR-512.pth")
+            restorer = GPENFaceRestoration(gpen_model_path)
+            restorer.load()
+            return restorer
+        except Exception as e:  # pragma: no cover
+            logger.error(f"Cannot init GPEN face restorer for API: {e}")
+            return None
     for restorer in shared.face_restorers:
         if restorer.name() == name:
             return restorer
@@ -104,31 +120,56 @@ def reactor_api(_: gr.Blocks, app: FastAPI):
     app.state.executor = ThreadPoolExecutor(max_workers=8)
     @app.post("/reactor/image")
     async def reactor_image(
-        source_image: str = Body("",title="Source Face Image"),
-        target_image: str = Body("",title="Target Image"),
-        source_faces_index: list[int] = Body([0],title="Comma separated face number(s) from swap-source image"),
-        face_index: list[int] = Body([0],title="Comma separated face number(s) for target image (result)"),
-        upscaler: str = Body("None",title="Upscaler"),
-        scale: float = Body(1,title="Scale by"),
-        upscale_visibility: float = Body(1,title="Upscaler visibility (if scale = 1)"),
-        face_restorer: str = Body("None",title="Restore Face: 0 - None; 1 - CodeFormer; 2 - GFPGA"),
-        restorer_visibility: float = Body(1,title="Restore visibility value"),
-        codeformer_weight: float = Body(0.5,title="CodeFormer Weight"),
-        restore_first: int = Body(1,title="Restore face -> Then upscale, 1 - True, 0 - False"),
-        model: str = Body("inswapper_128.onnx",title="Model"),
-        gender_source: int = Body(0,title="Gender Detection (Source) (0 - No, 1 - Female Only, 2 - Male Only)"),
-        gender_target: int = Body(0,title="Gender Detection (Target) (0 - No, 1 - Female Only, 2 - Male Only)"),
-        save_to_file: int = Body(0,title="Save Result to file, 0 - No, 1 - Yes"),
-        result_file_path: str = Body("",title="(if 'save_to_file = 1') Result file path"),
-        device: str = Body("CPU",title="CPU or CUDA (if you have it)"),
-        mask_face: int = Body(0,title="Face Mask Correction, 1 - True, 0 - False"),
-        select_source: int = Body(0,title="Select Source, 0 - Image, 1 - Face Model, 2 - Source Folder"),
-        face_model: str = Body("None",title="Filename of the face model (from 'models/reactor/faces'), e.g. elena.safetensors"),
-        source_folder: str = Body("",title="The path to the folder containing source faces images"),
-        random_image: int = Body(0,title="Randomly select an image from the path"),
-        upscale_force: int = Body(0,title="Force Upscale even if no face found"),
-        det_thresh: float = Body(0.5,title="Face Detection Threshold"),
-        det_maxnum: int = Body(0,title="Maximum number of faces to detect (0 is unlimited)"),
+        source_image: str = Body("", title="Source Face Image"),
+        target_image: str = Body("", title="Target Image"),
+        source_faces_index: list[int] = Body(
+            [0], title="Comma separated face number(s) from swap-source image"
+        ),
+        face_index: list[int] = Body(
+            [0], title="Comma separated face number(s) for target image (result)"
+        ),
+        upscaler: str = Body("None", title="Upscaler"),
+        scale: float = Body(1, title="Scale by"),
+        upscale_visibility: float = Body(1, title="Upscaler visibility (if scale = 1)"),
+        face_restorer: str = Body(
+            "None", title="Restore Face: None; CodeFormer; GFPGAN; GPEN_BFR_512"
+        ),
+        restorer_visibility: float = Body(1, title="Restore visibility value"),
+        codeformer_weight: float = Body(0.5, title="CodeFormer Weight"),
+        restore_first: int = Body(
+            1, title="Restore face -> Then upscale, 1 - True, 0 - False"
+        ),
+        model: str = Body("inswapper_128.onnx", title="Model"),
+        gender_source: int = Body(
+            0,
+            title="Gender Detection (Source) (0 - No, 1 - Female Only, 2 - Male Only)",
+        ),
+        gender_target: int = Body(
+            0,
+            title="Gender Detection (Target) (0 - No, 1 - Female Only, 2 - Male Only)",
+        ),
+        save_to_file: int = Body(0, title="Save Result to file, 0 - No, 1 - Yes"),
+        result_file_path: str = Body(
+            "", title="(if 'save_to_file = 1') Result file path"
+        ),
+        device: str = Body("CPU", title="CPU or CUDA (if you have it)"),
+        mask_face: int = Body(0, title="Face Mask Correction, 1 - True, 0 - False"),
+        select_source: int = Body(
+            0, title="Select Source, 0 - Image, 1 - Face Model, 2 - Source Folder"
+        ),
+        face_model: str = Body(
+            "None",
+            title="Filename of the face model (from 'models/reactor/faces'), e.g. elena.safetensors",
+        ),
+        source_folder: str = Body(
+            "", title="The path to the folder containing source faces images"
+        ),
+        random_image: int = Body(0, title="Randomly select an image from the path"),
+        upscale_force: int = Body(0, title="Force Upscale even if no face found"),
+        det_thresh: float = Body(0.5, title="Face Detection Threshold"),
+        det_maxnum: int = Body(
+            0, title="Maximum number of faces to detect (0 is unlimited)"
+        ),
     ):
         s_image = api.decode_base64_to_image(source_image) if select_source == 0 else None
         t_image = api.decode_base64_to_image(target_image)
@@ -137,7 +178,7 @@ def reactor_api(_: gr.Blocks, app: FastAPI):
             _, _, _, alpha = t_image.split()
         else:
             alpha = None
-        
+
         sf_index = source_faces_index
         f_index = face_index
         gender_s = gender_source
@@ -151,7 +192,7 @@ def reactor_api(_: gr.Blocks, app: FastAPI):
         use_model = get_full_model(model)
         if use_model is None:
             Exception("Model not found")
-        
+
         args = [s_image, t_image, use_model, sf_index, f_index, up_options, gender_s, gender_t, True, True, device, mask_face, select_source, face_model, source_folder, None, random_image,det_options]
         # result,_,_ = pool.map(swap_face, *args)
         result,_,_ = await run_event(app,swap_face,*args)
@@ -176,12 +217,12 @@ def reactor_api(_: gr.Blocks, app: FastAPI):
     async def reactor_models():
         model_names = [os.path.split(model)[1] for model in get_models()]
         return {"models": model_names}
-    
+
     @app.get("/reactor/upscalers")
     async def reactor_upscalers():
         names = [upscaler.name for upscaler in shared.sd_upscalers]
         return {"upscalers": names}
-    
+
     @app.get("/reactor/facemodels")
     async def reactor_facemodels():
         facemodels = [os.path.split(model)[1].split(".")[0] for model in get_facemodels()]
