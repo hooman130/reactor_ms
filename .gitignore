@@ -8,3 +8,6 @@ __pycache__/
 example
 *.txt
 !requirements.txt
+models/facerestore_models/
+*.onnx
+*.png

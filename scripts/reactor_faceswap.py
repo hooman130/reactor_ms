@@ -38,6 +38,7 @@ from scripts.reactor_helpers import (
     get_SDNEXT,
 )
 from scripts.reactor_globals import SWAPPER_MODELS_PATH #, DEVICE, DEVICE_LIST
+from scripts.reactor_gpen import GPENRestorer
 
 def IA_cap(cond: bool, label: str=""):
     return None
@@ -140,6 +141,8 @@ class FaceSwapScript(scripts.Script):
         for face_restorer in shared.face_restorers:
             if face_restorer.name() == self.face_restorer_name:
                 return face_restorer
+        if "GPEN" in self.face_restorer_name:
+            return GPENRestorer(self.face_restorer_name)
         return None
 
     @property
@@ -578,6 +581,8 @@ class FaceSwapScriptExtras(scripts_postprocessing.ScriptPostprocessing):
         for face_restorer in shared.face_restorers:
             if face_restorer.name() == self.face_restorer_name:
                 return face_restorer
+        if "GPEN" in self.face_restorer_name:
+            return GPENRestorer(self.face_restorer_name)
         return None
 
     @property

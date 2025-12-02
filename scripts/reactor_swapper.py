@@ -24,6 +24,7 @@ from scripts.reactor_helpers import (
     check_nsfwdet_model
 )
 from scripts.console_log_patch import apply_logging_patch
+from scripts.reactor_gpen import process_gpen_face
 
 from modules.face_restoration import FaceRestoration
 try: # A1111
@@ -162,6 +163,59 @@ def getFaceSwapModel(model_path: str):
     return FS_MODEL
 
 
+def norm_crop(img, landmark, image_size=512, mode='arcface'):
+    if mode == 'arcface':
+        # ArcFace/InsightFace standard 5 points for 112x112
+        src = np.array([
+            [38.2946, 51.6963],
+            [73.5318, 51.5014],
+            [56.0252, 71.7366],
+            [41.5493, 92.3655],
+            [70.7299, 92.2041]], dtype=np.float32)
+        # Scale to image_size (default 512 for GPEN)
+        src = src * (image_size / 112.0)
+    else:
+        return img, None
+
+    dst = landmark.astype(np.float32)
+    tform = cv2.estimateAffinePartial2D(dst, src)[0]
+
+    # Warp
+    warped = cv2.warpAffine(img, tform, (image_size, image_size), borderValue=0.0)
+    return warped, tform
+
+def paste_back(img_full, img_face, tform, mask=None):
+    # Inverse warp
+    M_inv = cv2.invertAffineTransform(tform)
+
+    # Mask for blending
+    face_h, face_w = img_face.shape[:2]
+    full_h, full_w = img_full.shape[:2]
+
+    if mask is None:
+        # Create a simple soft mask
+        mask = np.zeros((face_h, face_w), dtype=np.float32)
+        cv2.circle(mask, (face_w//2, face_h//2), int(face_w//2 * 0.9), (1.0,), -1)
+        # Blur the mask
+        mask = cv2.GaussianBlur(mask, (0, 0), sigmaX=face_w//10)
+        mask = mask[..., None] # H,W,1
+
+    # Warp the face back
+    face_inv = cv2.warpAffine(img_face, M_inv, (full_w, full_h), borderValue=0.0)
+    # Warp the mask back
+    mask_inv = cv2.warpAffine(mask, M_inv, (full_w, full_h), borderValue=0.0)
+    if mask_inv.ndim == 2:
+        mask_inv = mask_inv[..., None]
+
+    # Blend
+    img_full_float = img_full.astype(np.float32)
+    face_inv_float = face_inv.astype(np.float32)
+
+    # Composite
+    # img_full = img_full * (1 - mask) + face * mask
+    img_blended = img_full_float * (1.0 - mask_inv) + face_inv_float * mask_inv
+    return img_blended.astype(np.uint8)
+
 def restore_face(image: Image, enhancement_options: EnhancementOptions):
     result_image = image
 
@@ -171,13 +225,45 @@ def restore_face(image: Image, enhancement_options: EnhancementOptions):
     if enhancement_options.face_restorer is not None:
         original_image = result_image.copy()
         numpy_image = np.array(result_image)
-        if enhancement_options.face_restorer.name() == "CodeFormer":
-            logger.status("Restoring the face with %s (weight: %s)", enhancement_options.face_restorer.name(), enhancement_options.codeformer_weight)
+        restorer_name = enhancement_options.face_restorer.name()
+
+        if restorer_name == "CodeFormer":
+            logger.status("Restoring the face with %s (weight: %s)", restorer_name, enhancement_options.codeformer_weight)
             numpy_image = codeformer_model.codeformer.restore(
                 numpy_image, w=enhancement_options.codeformer_weight
             )
+        elif "GPEN" in restorer_name:
+            logger.status("Restoring the face with %s", restorer_name)
+            # Detect faces to align
+            det_size = (640, 640)
+            faces = analyze_faces(numpy_image, det_size=det_size)
+            if len(faces) == 0:
+                logger.status("No faces found for restoration")
+            else:
+                if "512" in restorer_name:
+                    align_size = 512
+                elif "1024" in restorer_name:
+                    align_size = 1024
+                elif "2048" in restorer_name:
+                    align_size = 2048
+                else:
+                    align_size = 512
+
+                for face in faces:
+                    # Align face
+                    kps = face.kps
+                    aligned_face, tform = norm_crop(numpy_image, kps, image_size=align_size)
+
+                    if aligned_face is None:
+                        continue
+
+                    restored_face = process_gpen_face(aligned_face, restorer_name)
+
+                    # Paste back with blending
+                    numpy_image = paste_back(numpy_image, restored_face, tform)
+
         else: # GFPGAN:
-            logger.status("Restoring the face with %s", enhancement_options.face_restorer.name())
+            logger.status("Restoring the face with %s", restorer_name)
             numpy_image = gfpgan_model.gfpgan_fix_faces(numpy_image)
             # numpy_image = enhancement_options.face_restorer.restore(numpy_image)
         restored_image = Image.fromarray(numpy_image)
