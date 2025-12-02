@@ -201,7 +201,7 @@ def show(is_img2img: bool, show_br: bool = True, **msgs):
             with gr.Row():
                 face_restorer_name = gr.Radio(
                     label="Restore Face",
-                    choices=["None"] + [x.name() for x in shared.face_restorers],
+                    choices=["None"] + [x.name() for x in shared.face_restorers] + ["GPEN-BFR-512", "GPEN-BFR-1024", "GPEN-BFR-2048"],
                     value=shared.face_restorers[0].name(),
                     type="value",
                 )
